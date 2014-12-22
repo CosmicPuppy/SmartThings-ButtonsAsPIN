@@ -4,13 +4,13 @@
  *  Assign a multi-button controller (e.g., Aeon Labs Minimote) to be a security 'PIN code' input pad,
  *    which triggers a switch, lock, mode, or Hello Home action.
  *  More details on GitHub: <https://github.com/CosmicPuppy/SmartThings-ButtonsAsPIN>
- *    and on SmartThings Community Forum: <http://community.smartthings.com/t/use-buttons-as-pin-input-e-g-aeon-minimote-button-sequence-as-trigger-to-hello-home-action-lock-unlock-arm-disarm-mode-etc/8378?u=tgauchat>
+ *    and on SmartThings Community Forum: <http://community.smartthings.com/t/SmartApps/8378?u=tgauchat>
  *
  *  Filename: ButtonsAsPIN.app.groovy
  *  Version: see myVersion()
- *  Date: 2014-12-21
+ *  Date: 2014-12-22
  *  Status:
- *    - First Beta release to Community for testing, feedback, feature requests.
+ *    - Beta release to Community for testing, feedback, feature requests.
  *    - Currently hard limited to 3-9 digits from a choice of 1-4.
  *    - Tested only with 4-button Aeon Labs Minimote, button-push only, no support for button-hold.
  *
@@ -24,7 +24,7 @@
  *
  *  There is no charge for this software:
  *  Optional "encouragement funding" is accepted to PayPal address: info@CosmicPuppy.com
- *  (Contributions sure help cover endless vet bills for Buddy & Deuce, the official CosmicPuppy beagles.)
+ *  (Contributions help cover endless vet bills for Buddy & Deuce, the official CosmicPuppy beagles.)
  *
  *  ----------------------------------------------------------------------------------------------------------------
  *  Copyright 2014 Terry Gauchat
@@ -45,7 +45,7 @@ import groovy.json.JsonSlurper
 /**
  * Frequently edited options, parameters, constants.
  */
-private def myVersion() { return "v0.1.0-beta+004" }
+private def myVersion() { return "v0.1.0-beta+005" }
 /**
  * Disable specific level of logging by commenting out log.* expressions as desired.
  * NB: Someday SmartThings's live log viewer front-end should provide dynamic filter-by-level, right?
@@ -134,7 +134,10 @@ def pageSelectActions() {
 
     /**
      * TODO: This should be dynamic length loop, but I need to figure out how to dynamically String substitute comb_*,
-     *       -- Is that even possible!? Maybe some form of Eval() would work?
+     * TODO: Apparently quotes can be used around variable names to do expansion! This would be perfect if it works?
+     *          Try something like: "comb_${i}" (including the double-quotes).
+     *       Reference this code sample for some ideas:
+     *          https://github.com/SANdood/Home-on-Code-Unlock-Too/blob/master/Home%20on%20Code%20Unlock%20Too.groovy
      */
     state.pinSeqList = []
     state.pinLength = pinLength.toInteger()

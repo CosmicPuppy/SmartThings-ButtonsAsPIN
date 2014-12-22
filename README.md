@@ -3,11 +3,11 @@ SmartThings-ButtonPIN
 
 Use Buttons As PIN Input
 
-Assign a multi-button controller (e.g., Aeon Labs Minimote) to be a security 'PIN code' input pad,
+Assign a multi-button controller (e.g., Aeon Labs Aeotec Minimote) to be a security 'PIN code' input pad,
   which triggers a switch, lock, mode, or Hello Home action.
 
 More details on SmartThings Community Forum:
-    <http://community.smartthings.com/t/use-buttons-as-pin-input-e-g-aeon-minimote-button-sequence-as-trigger-to-hello-home-action-lock-unlock-arm-disarm-mode-etc/8378?u=tgauchat>
+    <http://community.smartthings.com/t/SmartApps/8378?u=tgauchat>
 
 Status:
   - First Beta release to Community for testing, feedback, feature requests.
