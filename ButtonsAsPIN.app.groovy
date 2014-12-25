@@ -8,13 +8,15 @@
  *
  *  Filename: ButtonsAsPIN.app.groovy
  *  Version: see myVersion()
- *  Date: 2014-12-22
+ *  Date: 2014-12-25
  *  Status:
  *    - Beta release to Community for testing, feedback, feature requests.
- *    - Currently hard limited to 3-9 digits from a choice of 1-4.
+ *    - Currently hard limited to 2-9 digits,
+ *          from a choice of 1 to (number of buttons reported by device, max 9, default 4).
  *    - Tested only with 4-button Aeon Labs Minimote, button-push only, no support for button-hold.
+ *    - Testing with "ZWN-SC7 Enerwave 7 Button Scene Controller" (by @mattjfrank) in progress.
  *
- *  Summary Changelog (See github for full Release Notes):
+ *  Summary Changelog (See github for full Release Notes)
  *    - tbd.
  *
  *  Author: Terry Gauchat (CosmicPuppy)
@@ -45,7 +47,7 @@ import groovy.json.JsonSlurper
 /**
  * Frequently edited options, parameters, constants.
  */
-private def myVersion() { return "v0.1.1-beta+004+unstable" }
+private def myVersion() { return "v0.1.2-beta+006-unstable" }
 /**
  * Disable specific level of logging by commenting out log.* expressions as desired.
  * NB: Someday SmartThings's live log viewer front-end should provide dynamic filter-by-level, right?
@@ -88,6 +90,7 @@ preferences {
 
 
 def pageSelectButtonDev() {
+    myTrace("Version: ${myVersion()}. Running preferences pages.")
     dynamicPage(name: "pageSelectButtonDev", title: "General Configuration",
             nextPage: "pageSetPinSequence", uninstall: true) {
         section(title: "About This App") {
@@ -103,8 +106,8 @@ def pageSelectButtonDev() {
             input name: "buttonDevice", type: "capability.button", title: "Button Device:", multiple: false, required: true
         }
         section {
-            input name: "pinLength", type: "enum", title: "PIN length (3 to 9 digits):", multiple: false,
-                required: true, options: "3".."9", defaultValue: "4";
+            input name: "pinLength", type: "enum", title: "PIN length (2 to 9 digits):", multiple: false,
+                required: true, options: "2" .. "9", defaultValue: "4";
         }
         section(mobileOnly:true, hideable: true, hidden: true) {
             //icon title: "Custom Icon (optional)", required: false
@@ -116,18 +119,51 @@ def pageSelectButtonDev() {
 
 
 /**
- * TODO: Handle a variable number of buttons.
- *       Need to find a way to query the buttonDevice to find out how many buttons exist on it!
- *       Currently hardcoded to 4 buttons (based on Aeotec Minimote),
- *          but "ZWN-SC7 Enerwave 7 Button Scene Controller" (@mattjfrank) has 7 buttons.
+ * TODO: In progress... Handling a variable number of buttons.
+ *       Was hardcoded to 4 buttons (based on Aeotec Minimote), so that will be default;
+ *          but "ZWN-SC7 Enerwave 7 Button Scene Controller" (@mattjfrank) has 7 buttons,
+ *          and that Device Type currently has a "numButtons" attribute; so we read it.
+ * NB: Not sure this SmartApp can handle more than 9 buttons, so it is max for now (and 2 is min!).
  */
 def pageSetPinSequence() {
+    //Experimental, not required, numButtons can (should) be set in configure() of buttonDevice: buttonDevice.getNumButtons()
+    /* TODO: Need to do error avoid or more handling on next statement, if attribute does not exist? */
+    state.buttonDeviceName = "buttonDevice"
+    int numButtons = 0
+    def numButtonsString = ""
+
+    myDebug("Attemping buttonDevice.currentValue(\"numButtons\"). Value on next line...")
+    try {
+        state.buttonDeviceName = buttonDevice.displayName
+        numButtonsString = buttonDevice.currentValue("numButtons")
+    } catch (all) {
+        myDebug("Caught Exception from buttonDevice... No worries!")
+        state.buttonDeviceName = "buttonDevice.(undefined name)"
+        numButtonsString = ""
+    }
+    try {
+        numButtons = Integer.parseInt(numButtonsString)
+    } catch (all) {
+        myDebug("Caught Exception from parseInt... No worries!")
+        numButtons = 0
+    }
+    myDebug(numButtons)
+
+    if (numButtonsString == null || numButtons <= 1) { // Perhaps some buttonDevice returns 0 or 1 buttons which would be useless.
+        numButtons = 4
+        myTrace("numButtons of '${state.buttonDeviceName}' not valid. Using default: $numButtons.")
+    } else if (numButtons > 9)  {
+        myTrace("numButtons of '${state.buttonDeviceName}' is too big: $numButtons. Using max setting: 9.")
+        numButtons = 9
+    } else {
+        myTrace("numButtons of '${state.buttonDeviceName}' is: $numButtons");
+    }
     dynamicPage(name: "pageSetPinSequence", title: "Set PIN (Security Code)", nextPage: "pageSelectActions",
         install: false, uninstall: true) {
         section("PIN Code Buttons in Desired Sequence Order") {
             L:{ for( i in  1 .. pinLength.toInteger() ) {
                     input name: "comb_${i}", type: "enum", title: "Sequence $i:", mulitple: false, required: true,
-                        options: ["1","2","3","4"];
+                        options: 1 .. numButtons;
                 }
             }
             href "pageSelectButtonDev", title:"Go Back", description:"Tap to go back."
@@ -199,14 +235,14 @@ def pageSelectActions() {
 
 
 def installed() {
-    myTrace("Installed; Version: ${myVersion()}")
+    myTrace("Version: ${myVersion()}; Installed.")
     myDebug("Installed; settings: ${settings}") // settings includes the PIN, so we should avoid logging except for Debug.
 
     initialize()
 }
 
 def updated() {
-    myTrace("Updated; Version: ${myVersion()}")
+    myTrace("Version: ${myVersion()}; Updated.")
     myDebug("Updated; settings: ${settings}") // settings includes the PIN, so we should avoid logging except for Debug.
 
     unsubscribe()
@@ -250,7 +286,7 @@ def buttonEvent(evt){
             Yes ... the Device Handlers *should* be reconciled someday:
               I think "held" is nonsense and Minimote should just use buttonNumber 5 to 8 for helds.
         */
-        if(value == "pushed" || value[0..5] == "button") {
+        if(value == "pushed" || value[0 .. 5] == "button") {
             state.inputDigitsList << buttonNumber.toString()
             if(state.inputDigitsList.size > state.pinLength) {
                 state.inputDigitsList.remove(state.inputDigitsList.size - state.pinLength - 1)

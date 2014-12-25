@@ -1,6 +1,12 @@
 /**
  *  Minimote Tester
  *
+ *  TODO: Try adding more tiles like in the Enerwave
+ *        <https://github.com/mattjfrank/ZWN-SC7-Enerwave-7-Button-Scene-Controller/blob/master/ZWN-SC7.DeviceType.groovy>
+ *  TODO: Use the existing code as a baseline so git can have a full diff.
+ *  TODO: Put full headers, versioning, etc. in place for this file if it is needed.
+ *  TODO: Consider if "held" should be handled differently -- but there are other Aeon device handlers and SmartApps!
+ *
  *  Copyright 2014 Terry Gauchat
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -20,7 +26,7 @@ metadata {
         capability "Configuration"
         capability "Sensor"
 
-        attribute "numButtons", "number"
+        attribute "numButtons", "string"
 
         fingerprint deviceId: "0x0101", inClusters: "0x86,0x72,0x70,0x9B", outClusters: "0x26,0x2B"
         fingerprint deviceId: "0x0101", inClusters: "0x86,0x72,0x70,0x9B,0x85,0x84", outClusters: "0x26" // old style with numbered buttons
@@ -107,7 +113,7 @@ def configurationCmds() {
 }
 
 def configure() {
-    def numButtons = 4
+    def numButtons = "4"
     def result = sendEvent(name: "numButtons", value: numButtons, display: true)
     def cmds = configurationCmds()
     log.debug("Sending configuration: $cmds")
