@@ -1,4 +1,4 @@
-private def myVersion() { return "v0.1.2-beta+007-unstable" }
+private def myVersion() { return "v0.1.2-beta+008" }
 /**
  *  Use Buttons As PIN Input
  *
@@ -161,7 +161,7 @@ def pageSetPinSequence() {
     dynamicPage(name: "pageSetPinSequence", title: "Set PIN (Security Code)", nextPage: "pageSelectActions",
         install: false, uninstall: true) {
         section("PIN Code Buttons in Desired Sequence Order") {
-            L:{ for( i in  1 .. pinLength.toInteger() ) {
+            L:{ for( i in 1 .. pinLength.toInteger() ) {
                     input name: "comb_${i}", type: "enum", title: "Sequence $i:", mulitple: false, required: true,
                         options: 1 .. numButtons;
                 }
@@ -173,7 +173,6 @@ def pageSetPinSequence() {
 
 
 def pageSelectActions() {
-    def valid = true
     def pageProperties = [
         name: "pageSelectActions",
         title: "Confirm PIN & Select Action(s)",
@@ -181,38 +180,12 @@ def pageSelectActions() {
         uninstall: true
     ]
 
-    /**
-     * TODO: This should be dynamic length loop, but I need to figure out how to dynamically String substitute comb_*,
-     * TODO: Apparently quotes can be used around variable names to do expansion! This would be perfect if it works?
-     *          Try something like: "comb_${i}" (including the double-quotes).
-     *       Reference this code sample for some ideas:
-     *          https://github.com/SANdood/Home-on-Code-Unlock-Too/blob/master/Home%20on%20Code%20Unlock%20Too.groovy
-     */
     state.pinSeqList = []
     state.pinLength = pinLength.toInteger()
-    switch ( state.pinLength ) {
-        case 9:
-            state.pinSeqList << comb_9
-        case 8..9:
-            state.pinSeqList << comb_8
-        case 7..9:
-            state.pinSeqList << comb_7
-        case 6..9:
-            state.pinSeqList << comb_6
-        case 5..9:
-            state.pinSeqList << comb_5
-        case 4..9:
-            state.pinSeqList << comb_4
-        case 3..9:
-            state.pinSeqList << comb_3
-        case 2..9:
-            state.pinSeqList << comb_2
-        case 1..9:
-            state.pinSeqList << comb_1
+    for( i in 1 .. state.pinLength ) {
+        state.pinSeqList << settings."comb_${i}"
     }
-    state.pinSeqList.reverse(true) // true --> mutate original list instead of a copy.
-    myDebug("pinSeqList is $state.pinSeqList")
-    myDebug("pinLength is $state.pinLength")
+    myDebug("pinLength is $state.pinLength; pinSeqList is $state.pinSeqList")
 
     return dynamicPage(pageProperties) {
         section() {
@@ -323,10 +296,18 @@ def buttonEvent(evt){
 /**
  * Event handlers.
  * Most code copied from "Button Controller" by SmartThings, + slight modifications.
- * TODO: Put event handler blocks in same order as Preferences.
  */
-def executeHandlers() {
-    myTrace("executeHandlers; switches/locks toggles, mode set, phrase execute.")
+private def executeHandlers() {
+    myTrace("executeHandlers: phrase exec, mode set, locks/switches toggles.")
+
+    def phrase = findPreferenceSetting('phrase')
+    if (phrase != null)	{
+        myTrace("helloHome.execute: \"${phrase}\"")
+        location.helloHome.execute(phrase)
+    }
+
+    def mode = findPreferenceSetting('mode')
+    if (mode != null) changeMode(mode)
 
     def switches = findPreferenceSetting('switches')
     myDebug("switches are ${switches}")
@@ -335,19 +316,10 @@ def executeHandlers() {
     def locks = findPreferenceSetting('locks')
     myDebug("locks are ${locks}")
     if (locks != null) toggle(locks,'lock')
-
-    def mode = findPreferenceSetting('mode')
-    if (mode != null) changeMode(mode)
-
-    def phrase = findPreferenceSetting('phrase')
-    if (phrase != null)	{
-        myTrace("helloHome.execute: \"${phrase}\"")
-        location.helloHome.execute(phrase)
-    }
 } /* executeHandlers() */
 
 
-def findPreferenceSetting(preferenceName) {
+private def findPreferenceSetting(preferenceName) {
     def pref = settings[preferenceName]
     if(pref != null) {
         myDebug("Found Pref Setting: $pref for $preferenceName")
@@ -367,7 +339,7 @@ def findPreferenceSetting(preferenceName) {
  *       But: A toggle type action for Hello Home phrase is appropriate if reading and using mode or state is reliable.
  *     The current "Failsafe default" sections are a questionable design decision; Is there a better choice?
  */
-def toggle(devices,capabilityType) {
+private def toggle(devices,capabilityType) {
     if (capabilityType == 'switch') {
         myDebug("toggle switch Values: $devices = ${devices*.currentValue('switch')}")
         if (devices*.currentValue('switch').contains('on')) {
@@ -401,12 +373,18 @@ def toggle(devices,capabilityType) {
 } /* toggle() */
 
 
-def changeMode(mode) {
+private def changeMode(mode) {
     myDebug("changeMode: $mode, location.mode = $location.mode, location.modes = $location.modes")
 
     if (location.mode != mode && location.modes?.find { it.name == mode }) {
         myTrace("setLocationMode: ${mode}")
         setLocationMode(mode)
+    } else {
+        if (location.mode == mode) {
+            myTrace("Mode unchanged. Already set to: ${mode}")
+        } else {
+            myTrace("Mode unchanged. Unable to find defined mode named: ${mode}")
+        }
     }
 }
 
