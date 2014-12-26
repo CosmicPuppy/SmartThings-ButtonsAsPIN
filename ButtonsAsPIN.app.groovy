@@ -1,3 +1,4 @@
+private def myVersion() { return "v0.1.2-beta+007-unstable" }
 /**
  *  Use Buttons As PIN Input
  *
@@ -7,7 +8,7 @@
  *    and on SmartThings Community Forum: <http://community.smartthings.com/t/SmartApps/8378?u=tgauchat>
  *
  *  Filename: ButtonsAsPIN.app.groovy
- *  Version: see myVersion()
+ *  Version: see myVersion(), above.
  *  Date: 2014-12-25
  *  Status:
  *    - Beta release to Community for testing, feedback, feature requests.
@@ -47,7 +48,6 @@ import groovy.json.JsonSlurper
 /**
  * Frequently edited options, parameters, constants.
  */
-private def myVersion() { return "v0.1.2-beta+006-unstable" }
 /**
  * Disable specific level of logging by commenting out log.* expressions as desired.
  * NB: Someday SmartThings's live log viewer front-end should provide dynamic filter-by-level, right?
