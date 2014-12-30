@@ -1,20 +1,23 @@
+private def myVersion() { return "v0.1.2-beta+008" }
 /**
  *  Use Buttons As PIN Input
  *
  *  Assign a multi-button controller (e.g., Aeon Labs Minimote) to be a security 'PIN code' input pad,
  *    which triggers a switch, lock, mode, or Hello Home action.
  *  More details on GitHub: <https://github.com/CosmicPuppy/SmartThings-ButtonsAsPIN>
- *    and on SmartThings Community Forum: <http://community.smartthings.com/t/use-buttons-as-pin-input-e-g-aeon-minimote-button-sequence-as-trigger-to-hello-home-action-lock-unlock-arm-disarm-mode-etc/8378?u=tgauchat>
+ *    and on SmartThings Community Forum: <http://community.smartthings.com/t/SmartApps/8378?u=tgauchat>
  *
  *  Filename: ButtonsAsPIN.app.groovy
- *  Version: see myVersion()
- *  Date: 2014-12-21
+ *  Version: see myVersion(), above.
+ *  Date: 2014-12-25
  *  Status:
- *    - First Beta release to Community for testing, feedback, feature requests.
- *    - Currently hard limited to 3-9 digits from a choice of 1-4.
+ *    - Beta release to Community for testing, feedback, feature requests.
+ *    - Currently hard limited to 2-9 digits,
+ *          from a choice of 1 to (number of buttons reported by device, max 9, default 4).
  *    - Tested only with 4-button Aeon Labs Minimote, button-push only, no support for button-hold.
+ *    - Testing with "ZWN-SC7 Enerwave 7 Button Scene Controller" (by @mattjfrank) in progress.
  *
- *  Summary Changelog (See github for full Release Notes):
+ *  Summary Changelog (See github for full Release Notes)
  *    - tbd.
  *
  *  Author: Terry Gauchat (CosmicPuppy)
@@ -24,7 +27,7 @@
  *
  *  There is no charge for this software:
  *  Optional "encouragement funding" is accepted to PayPal address: info@CosmicPuppy.com
- *  (Contributions sure help cover endless vet bills for Buddy & Deuce, the official CosmicPuppy beagles.)
+ *  (Contributions help cover endless vet bills for Buddy & Deuce, the official CosmicPuppy beagles.)
  *
  *  ----------------------------------------------------------------------------------------------------------------
  *  Copyright 2014 Terry Gauchat
@@ -45,13 +48,12 @@ import groovy.json.JsonSlurper
 /**
  * Frequently edited options, parameters, constants.
  */
-private def myVersion() { return "v0.1.0-beta+004" }
 /**
  * Disable specific level of logging by commenting out log.* expressions as desired.
  * NB: Someday SmartThings's live log viewer front-end should provide dynamic filter-by-level, right?
  */
 private def myDebug(text) {
-    // log.debug myLogFormat(text)
+    log.debug myLogFormat(text)
 }
 private def myTrace(text) {
     log.trace myLogFormat(text)
@@ -82,126 +84,149 @@ definition(
 
 preferences {
     page(name: "pageSelectButtonDev")
-	page(name: "pageSetPinSequence")
+    page(name: "pageSetPinSequence")
     page(name: "pageSelectActions")
 } /* preferences */
 
 
 def pageSelectButtonDev() {
-	dynamicPage(name: "pageSelectButtonDev", title: "Select your button device & PIN length...",
-    	    nextPage: "pageSetPinSequence", uninstall: true) {
-	    section {
-            paragraph "App Info: Version ${myVersion()}\nhttps://github.com/CosmicPuppy/SmartThings-ButtonsAsPIN"
-	    }
-        section([mobileOnly:true]) {
-			label title: "Assign a name to this SmartApp instance?", required: false
-			mode title: "Activate for specific mode(s)?", required: false
-		}
-		section {
-			input name: "buttonDevice", type: "capability.button", title: "Button Device:", multiple: false, required: true
-		}
-		section {
-			input name: "pinLength", type: "enum", title: "Desired PIN length (3 to 9 digits):", multiple: false,
-            	required: true, options:["3","4","5","6","7","8","9"], defaultValue: "4";
-		}
-	}
+    myTrace("Version: ${myVersion()}. Running preferences pages.")
+    dynamicPage(name: "pageSelectButtonDev", title: "General Configuration",
+            nextPage: "pageSetPinSequence", uninstall: true) {
+        section(title: "About This App") {
+            paragraph "Version ${myVersion()}"
+                //"Version ${myVersion()}\nhttps://github.com/CosmicPuppy/SmartThings-ButtonsAsPIN"
+            href title: "GitHub Link",
+                 style: "external",
+                 url: "https://github.com/CosmicPuppy/SmartThings-ButtonsAsPIN",
+                 description: "https://github.com/CosmicPuppy/SmartThings-ButtonsAsPIN"
+                 required: false
+        }
+        section {
+            input name: "buttonDevice", type: "capability.button", title: "Button Device:", multiple: false, required: true
+        }
+        section {
+            input name: "pinLength", type: "enum", title: "PIN length (2 to 9 digits):", multiple: false,
+                required: true, options: "2" .. "9", defaultValue: "4";
+        }
+        section(mobileOnly:true, hideable: true, hidden: true) {
+            //icon title: "Custom Icon (optional)", required: false
+            label title: "Assign a name to this SmartApp instance?", required: false
+            mode title: "Activate for specific mode(s)?", required: false
+        }
+    }
 } /* pageSelectButtonDev() */
 
 
+/**
+ * TODO: In progress... Handling a variable number of buttons.
+ *       Was hardcoded to 4 buttons (based on Aeotec Minimote), so that will be default;
+ *          but "ZWN-SC7 Enerwave 7 Button Scene Controller" (@mattjfrank) has 7 buttons,
+ *          and that Device Type currently has a "numButtons" attribute; so we read it.
+ * NB: Not sure this SmartApp can handle more than 9 buttons, so it is max for now (and 2 is min!).
+ */
 def pageSetPinSequence() {
-	dynamicPage(name: "pageSetPinSequence", title: "Set PIN (security code sequence)...", nextPage: "pageSelectActions",
-    	install: false, uninstall: true) {
+    //Experimental, not required, numButtons can (should) be set in configure() of buttonDevice: buttonDevice.getNumButtons()
+    /* TODO: Need to do error avoid or more handling on next statement, if attribute does not exist? */
+    state.buttonDeviceName = "buttonDevice"
+    int numButtons = 0
+    def numButtonsString = ""
+
+    myDebug("Attemping buttonDevice.currentValue(\"numButtons\"). Value on next line...")
+    try {
+        state.buttonDeviceName = buttonDevice.displayName
+        numButtonsString = buttonDevice.currentValue("numButtons")
+    } catch (all) {
+        myDebug("Caught Exception from buttonDevice... No worries!")
+        state.buttonDeviceName = "buttonDevice.(undefined name)"
+        numButtonsString = ""
+    }
+    try {
+        numButtons = Integer.parseInt(numButtonsString)
+    } catch (all) {
+        myDebug("Caught Exception from parseInt... No worries!")
+        numButtons = 0
+    }
+    myDebug(numButtons)
+
+    if (numButtonsString == null || numButtons <= 1) { // Perhaps some buttonDevice returns 0 or 1 buttons which would be useless.
+        numButtons = 4
+        myTrace("numButtons of '${state.buttonDeviceName}' not valid. Using default: $numButtons.")
+    } else if (numButtons > 9)  {
+        myTrace("numButtons of '${state.buttonDeviceName}' is too big: $numButtons. Using max setting: 9.")
+        numButtons = 9
+    } else {
+        myTrace("numButtons of '${state.buttonDeviceName}' is: $numButtons");
+    }
+    dynamicPage(name: "pageSetPinSequence", title: "Set PIN (Security Code)", nextPage: "pageSelectActions",
+        install: false, uninstall: true) {
         section("PIN Code Buttons in Desired Sequence Order") {
-        	L:{ for( i in  1 .. pinLength.toInteger() ) {
-               		input name: "comb_${i}", type: "enum", title: "Sequence $i:", mulitple: false, required: true,
-                    	options: ["1","2","3","4"];
+            L:{ for( i in 1 .. pinLength.toInteger() ) {
+                    input name: "comb_${i}", type: "enum", title: "Sequence $i:", mulitple: false, required: true,
+                        options: 1 .. numButtons;
                 }
             }
             href "pageSelectButtonDev", title:"Go Back", description:"Tap to go back."
-    	}
+        }
     }
 } /* pageSetPinSequence() */
 
 
 def pageSelectActions() {
-    def valid = true
     def pageProperties = [
         name: "pageSelectActions",
-        title: "Confirm PIN & Select Action(s)...",
+        title: "Confirm PIN & Select Action(s)",
         install: true,
         uninstall: true
     ]
 
-    /**
-     * TODO: This should be dynamic length loop, but I need to figure out how to dynamically String substitute comb_*,
-     *       -- Is that even possible!? Maybe some form of Eval() would work?
-     */
     state.pinSeqList = []
     state.pinLength = pinLength.toInteger()
-    switch ( state.pinLength ) {
-    	case 9:
-            state.pinSeqList << comb_9
-    	case 8..9:
-            state.pinSeqList << comb_8
-    	case 7..9:
-            state.pinSeqList << comb_7
-    	case 6..9:
-            state.pinSeqList << comb_6
-    	case 5..9:
-            state.pinSeqList << comb_5
-    	case 4..9:
-            state.pinSeqList << comb_4
-    	case 3..9:
-            state.pinSeqList << comb_3
-    	case 2..9:
-            state.pinSeqList << comb_2
-    	case 1..9:
-            state.pinSeqList << comb_1
+    for( i in 1 .. state.pinLength ) {
+        state.pinSeqList << settings."comb_${i}"
     }
-    state.pinSeqList.reverse(true) // true --> mutate original list instead of a copy.
-    myDebug("pinSeqList is $state.pinSeqList")
-    myDebug("pinLength is $state.pinLength")
+    myDebug("pinLength is $state.pinLength; pinSeqList is $state.pinSeqList")
 
     return dynamicPage(pageProperties) {
         section() {
             paragraph "PIN Code set to: " + "$state.pinSeqList"
             href "pageSetPinSequence", title:"Go Back", description:"Tap to change PIN Code sequence."
         }
-        section("Devices, Modes, Actions") {
-            input "switches", "capability.switch", title: "Toggle Lights & Switches", multiple: true, required: false
-            input "locks", "capability.lock", title: "Toggle Locks", multiple: true, required: false
-            input "mode", "mode", title: "Set Mode", required: false
+        section("Actions, Mode, Locks, Switches") {
             def phrases = location.helloHome?.getPhrases()*.label
             if (phrases) {
                 myDebug("Phrase list found: ${phrases}")
                 /* NB: Customary to not allow multiple phrases. Complications due to sequencing, etc. */
                 input "phrase", "enum", title: "Trigger Hello Home Action", required: false, options: phrases
             }
+            input "mode", "mode", title: "Set Mode", required: false
+            input "locks", "capability.lock", title: "Toggle Locks", multiple: true, required: false
+            input "switches", "capability.switch", title: "Toggle Lights & Switches", multiple: true, required: false
         }
     }
 } /* pageSelectActions() */
 
 
 def installed() {
-    myTrace("Installed; Version: ${myVersion()}")
-	myDebug("Installed; settings: ${settings}") // settings includes the PIN, so we should avoid logging except for Debug.
+    myTrace("Version: ${myVersion()}; Installed.")
+    myDebug("Installed; settings: ${settings}") // settings includes the PIN, so we should avoid logging except for Debug.
 
-	initialize()
+    initialize()
 }
 
 def updated() {
-    myTrace("Updated; Version: ${myVersion()}")
-	myDebug("Updated; settings: ${settings}") // settings includes the PIN, so we should avoid logging except for Debug.
+    myTrace("Version: ${myVersion()}; Updated.")
+    myDebug("Updated; settings: ${settings}") // settings includes the PIN, so we should avoid logging except for Debug.
 
-	unsubscribe()
-	initialize()
+    unsubscribe()
+    initialize()
 }
 
 def initialize() {
-	subscribe(buttonDevice, "button", buttonEvent)
+    subscribe(buttonDevice, "button", buttonEvent)
     state.inputDigitsList = []
 
-	myDebug("Initialized - state: ${state}")
+    myDebug("Initialized - state: ${state}")
 }
 
 
@@ -221,27 +246,33 @@ def initialize() {
  *     NOT waiting will often still work, though, if there are no double presses (duplicate sequential digits in the PIN).
  */
 def buttonEvent(evt){
-	def allOK = true;
-	if(true) {
-		def value = evt.value
+    def allOK = true;
+    if(allOK) {
+        def value = evt.value
         def slurper = new JsonSlurper()
         def dataMap = slurper.parseText(evt.data)
         def buttonNumber = dataMap.buttonNumber
-		myDebug("buttonEvent Device: [$buttonDevice.name], Name: [$evt.name], Value: [$evt.value], Data: [$evt.data], ButtonNumber: [$dataMap.buttonNumber]")
-        if(value == "pushed") {
-        	state.inputDigitsList << buttonNumber.toString()
+        myDebug("buttonEvent Device: [$buttonDevice.name], Name: [$evt.name], Value: [$evt.value], Data: [$evt.data], ButtonNumber: [$dataMap.buttonNumber]")
+
+        /**
+            Aeon Minimote returns "pushed" or "held". Enerwave 7 (by @mattjfrank) returns "button #"
+            Yes ... the Device Handlers *should* be reconciled someday:
+              I think "held" is nonsense and Minimote should just use buttonNumber 5 to 8 for helds.
+        */
+        if(value == "pushed" || value[0 .. 5] == "button") {
+            state.inputDigitsList << buttonNumber.toString()
             if(state.inputDigitsList.size > state.pinLength) {
-            	state.inputDigitsList.remove(state.inputDigitsList.size - state.pinLength - 1)
+                state.inputDigitsList.remove(state.inputDigitsList.size - state.pinLength - 1)
             }
             myDebug("Current inputDigitsList: $state.inputDigitsList")
             if(state.inputDigitsList.equals(state.pinSeqList)) {
-            	myDebug("PIN Match Detected; found [$state.pinSeqList]. Clearing input digits buffer.")
-            	myTrace("PIN Match Detected. Clearing input digits buffer.")
-            	state.inputDigitsList.clear();
+                myDebug("PIN Match Detected; found [$state.pinSeqList]. Clearing input digits buffer.")
+                myTrace("PIN Match Detected. Clearing input digits buffer.")
+                state.inputDigitsList.clear();
                 executeHandlers()
             } else {
-            	myDebug("No PIN match yet: inputDigitsList is $inputDigitsList; looking for $state.pinSeqList")
-            	myTrace("No PIN match yet.")
+                myDebug("No PIN match yet: inputDigitsList is $inputDigitsList; looking for $state.pinSeqList")
+                myTrace("No PIN match yet.")
             }
         }
 
@@ -254,11 +285,11 @@ def buttonEvent(evt){
      * The only time multiple event backscan seems to apply is for multi-presses of the same key. But then this is essential.
      * Yet eventsSince seems to only be reporting NEW events. Weird. Not critical for this App to work ok, though.
      */
-	//	def recentEvents = buttonDevice.eventsSince(new Date(now() - 10000),
+    //	def recentEvents = buttonDevice.eventsSince(new Date(now() - 10000),
     //    	[max:pinLength.toInteger()]).findAll{it.value == evt.value && it.data == evt.data}
-	//	myDebug("PIN Found ${recentEvents.size()?:0} events in past 10 seconds"
+    //	myDebug("PIN Found ${recentEvents.size()?:0} events in past 10 seconds"
     //  recentEvents.eachWithIndex { it, i -> myDebug("PIN [$i] Value:$it.value Data:$it.data" }
-	}
+    }
 } /* buttonEvent() */
 
 
@@ -266,34 +297,34 @@ def buttonEvent(evt){
  * Event handlers.
  * Most code copied from "Button Controller" by SmartThings, + slight modifications.
  */
-def executeHandlers() {
-	myTrace("executeHandlers; switches/locks toggles, mode set, phrase execute.")
+private def executeHandlers() {
+    myTrace("executeHandlers: phrase exec, mode set, locks/switches toggles.")
 
-	def switches = findPreferenceSetting('switches')
-    myDebug("switches are ${switches}")
-	if (switches != null) toggle(switches,'switch')
-
-	def locks = findPreferenceSetting('locks')
-    myDebug("locks are ${locks}")
-	if (locks != null) toggle(locks,'lock')
-
-	def mode = findPreferenceSetting('mode')
-	if (mode != null) changeMode(mode)
-
-	def phrase = findPreferenceSetting('phrase')
+    def phrase = findPreferenceSetting('phrase')
     if (phrase != null)	{
         myTrace("helloHome.execute: \"${phrase}\"")
         location.helloHome.execute(phrase)
     }
+
+    def mode = findPreferenceSetting('mode')
+    if (mode != null) changeMode(mode)
+
+    def switches = findPreferenceSetting('switches')
+    myDebug("switches are ${switches}")
+    if (switches != null) toggle(switches,'switch')
+
+    def locks = findPreferenceSetting('locks')
+    myDebug("locks are ${locks}")
+    if (locks != null) toggle(locks,'lock')
 } /* executeHandlers() */
 
 
-def findPreferenceSetting(preferenceName) {
-	def pref = settings[preferenceName]
-	if(pref != null) {
-		myDebug("Found Pref Setting: $pref for $preferenceName")
-	}
-	return pref
+private def findPreferenceSetting(preferenceName) {
+    def pref = settings[preferenceName]
+    if(pref != null) {
+        myDebug("Found Pref Setting: $pref for $preferenceName")
+    }
+    return pref
 }
 
 
@@ -308,47 +339,53 @@ def findPreferenceSetting(preferenceName) {
  *       But: A toggle type action for Hello Home phrase is appropriate if reading and using mode or state is reliable.
  *     The current "Failsafe default" sections are a questionable design decision; Is there a better choice?
  */
-def toggle(devices,capabilityType) {
+private def toggle(devices,capabilityType) {
     if (capabilityType == 'switch') {
-    	myDebug("toggle switch Values: $devices = ${devices*.currentValue('switch')}")
-    	if (devices*.currentValue('switch').contains('on')) {
-    	    myTrace("Set devices.off: ${devices}")
-    		devices.off()
-    	}
-    	else if (devices*.currentValue('switch').contains('off')) {
-    	    myTrace("Set devices.on: ${devices}")
-    		devices.on()
-    	}
-    	else {
-    	    myTrace("Set devices.on (Failsafe default action attempt.): ${devices}")
-    		devices.on()
-    	}
+        myDebug("toggle switch Values: $devices = ${devices*.currentValue('switch')}")
+        if (devices*.currentValue('switch').contains('on')) {
+            myTrace("Set devices.off: ${devices}")
+            devices.off()
+        }
+        else if (devices*.currentValue('switch').contains('off')) {
+            myTrace("Set devices.on: ${devices}")
+            devices.on()
+        }
+        else {
+            myTrace("Set devices.on (Failsafe default action attempt.): ${devices}")
+            devices.on()
+        }
     }
-	else if (capabilityType == 'lock') {
-    	myDebug("toggle lock Values: $devices = ${devices*.currentValue('lock')}")
-    	if (devices*.currentValue('lock').contains('locked')) {
-    	    myTrace("Set devices.unlock: ${devices}")
-    		devices.unlock()
-    	}
-    	else if (devices*.currentValue('lock').contains('unlocked')) {
-    	    myTrace("Set devices.lock: ${devices}")
-    		devices.lock()
-    	}
-    	else {
-    	    myTrace("Set devices.unlock (Failsafe default action attempt.): ${devices}")
-    		devices.unlock()
-    	}
-	}
+    else if (capabilityType == 'lock') {
+        myDebug("toggle lock Values: $devices = ${devices*.currentValue('lock')}")
+        if (devices*.currentValue('lock').contains('locked')) {
+            myTrace("Set devices.unlock: ${devices}")
+            devices.unlock()
+        }
+        else if (devices*.currentValue('lock').contains('unlocked')) {
+            myTrace("Set devices.lock: ${devices}")
+            devices.lock()
+        }
+        else {
+            myTrace("Set devices.unlock (Failsafe default action attempt.): ${devices}")
+            devices.unlock()
+        }
+    }
 } /* toggle() */
 
 
-def changeMode(mode) {
-	myDebug("changeMode: $mode, location.mode = $location.mode, location.modes = $location.modes")
+private def changeMode(mode) {
+    myDebug("changeMode: $mode, location.mode = $location.mode, location.modes = $location.modes")
 
-	if (location.mode != mode && location.modes?.find { it.name == mode }) {
-	    myTrace("setLocationMode: ${mode}")
-		setLocationMode(mode)
-	}
+    if (location.mode != mode && location.modes?.find { it.name == mode }) {
+        myTrace("setLocationMode: ${mode}")
+        setLocationMode(mode)
+    } else {
+        if (location.mode == mode) {
+            myTrace("Mode unchanged. Already set to: ${mode}")
+        } else {
+            myTrace("Mode unchanged. Unable to find defined mode named: ${mode}")
+        }
+    }
 }
 
 
