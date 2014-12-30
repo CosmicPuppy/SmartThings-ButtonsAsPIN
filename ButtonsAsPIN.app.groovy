@@ -1,4 +1,6 @@
-private def myVersion() { return "v0.1.2-beta+008" }
+private def myVersion() { return "v0.1.3-develop+000-unstable" }
+// Version Numbering: vMajor.Minor.VisibleFix[-branch]+BuildNo[-State]. For master, branch=beta or null.
+// In non-release branches, version number is pre-incremented (i.e., branch version always > base released version).
 /**
  *  Use Buttons As PIN Input
  *
@@ -9,7 +11,7 @@ private def myVersion() { return "v0.1.2-beta+008" }
  *
  *  Filename: ButtonsAsPIN.app.groovy
  *  Version: see myVersion(), above.
- *  Date: 2014-12-25
+ *  Date: 2014-12-26
  *  Status:
  *    - Beta release to Community for testing, feedback, feature requests.
  *    - Currently hard limited to 2-9 digits,
@@ -53,13 +55,13 @@ import groovy.json.JsonSlurper
  * NB: Someday SmartThings's live log viewer front-end should provide dynamic filter-by-level, right?
  */
 private def myDebug(text) {
-    log.debug myLogFormat(text)
+    log.debug myLogFormat(text) // NB: Debug level messages including the PIN number! Keep debug off mostly.
 }
 private def myTrace(text) {
-    log.trace myLogFormat(text)
+    log.trace myLogFormat(text) // NB: Trace messages are farely minimal. Still helpful even if debug on.
 }
 private def myInfo(text) {
-    log.info myLogFormat(text)
+    log.info myLogFormat(text)  // NB: No usages in this program. TODO: Should some Trace be Info?
 }
 private def myLogFormat(text) {
     return "\"${app.label}\".(\"${app.name}\"): ${text}"
