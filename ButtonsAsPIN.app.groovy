@@ -1,4 +1,4 @@
-private def myVersion() { return "v0.1.3-develop+000-unstable" }
+private def myVersion() { return "v0.1.3-develop+001-unstable" }
 // Version Numbering: vMajor.Minor.VisibleFix[-branch]+BuildNo[-State]. For master, branch=beta or null.
 // In non-release branches, version number is pre-incremented (i.e., branch version always > base released version).
 /**
@@ -11,10 +11,10 @@ private def myVersion() { return "v0.1.3-develop+000-unstable" }
  *
  *  Filename: ButtonsAsPIN.app.groovy
  *  Version: see myVersion(), above.
- *  Date: 2014-12-26
+ *  Date: 2015-01-16
  *  Status:
  *    - Beta release to Community for testing, feedback, feature requests.
- *    - Currently hard limited to 2-9 digits,
+ *    - Currently hard limited to 1-9 digits,
  *          from a choice of 1 to (number of buttons reported by device, max 9, default 4).
  *    - Tested only with 4-button Aeon Labs Minimote, button-push only, no support for button-hold.
  *    - Testing with "ZWN-SC7 Enerwave 7 Button Scene Controller" (by @mattjfrank) in progress.
@@ -108,8 +108,8 @@ def pageSelectButtonDev() {
             input name: "buttonDevice", type: "capability.button", title: "Button Device:", multiple: false, required: true
         }
         section {
-            input name: "pinLength", type: "enum", title: "PIN length (2 to 9 digits):", multiple: false,
-                required: true, options: "2" .. "9", defaultValue: "4";
+            input name: "pinLength", type: "enum", title: "PIN length (1 to 9 digits):", multiple: false,
+                required: true, options: "1" .. "9", defaultValue: "4";
         }
         section(mobileOnly:true, hideable: true, hidden: true) {
             //icon title: "Custom Icon (optional)", required: false
