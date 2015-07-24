@@ -1,7 +1,11 @@
+private def myVersion() { return "v1.0.1-develop+002-unstable" }
+// Version Numbering: vMajor.Minor.VisibleFix[-branch]+BuildNo[-State]. For master, branch=beta or null.
+// In non-release branches, version number is pre-incremented (i.e., branch version always > base released version).
 /**
- *  Echo Endpoint
+ *  Echo Hue Emulator Endpoint
  *
- *  Copyright 2015 Ronald Gouldner
+ *  By Terry R. Gauchat
+ *  Based upon Ronald Gouldner
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -13,30 +17,93 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  */
-definition(
-        name: "Echo SmartThings Endpoint",
-        namespace: "gouldner",
-        author: "Ronald Gouldner",
-        description: "This is an endpoint authorization smart app to integrate my echo with my SmartThings hub",
-        category: "My Apps",
-        iconUrl: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience.png",
-        iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
-        iconX3Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
-        oauth: true)
 
 
 /**
- *  App Endpoint API Access Example
- *
- *  Author: SmartThings
+ * Frequently edited options, parameters, constants.
  */
+/**
+ * Disable specific level of logging by commenting out log.* expressions as desired.
+ * NB: Someday SmartThings's live log viewer front-end should provide dynamic filter-by-level, right?
+ */
+private def myDebug(text) {
+    log.debug myLogFormat(text) // NB: Debug level messages including the PIN number! Keep debug off mostly.
+}
+private def myTrace(text) {
+    log.trace myLogFormat(text) // NB: Trace messages are farely minimal. Still helpful even if debug on.
+}
+private def myInfo(text) {
+    log.info myLogFormat(text)  // NB: No usages in this program. TODO: Should some Trace be Info?
+}
+private def myLogFormat(text) {
+    return "\"${app.label}\".(\"${app.name}\"): ${text}"
+}
+
+
+definition(
+    name: "Echo Hue Emulator Endpoint",
+    namespace: "CosmicPuppy",
+    author: "Terry Gauchat",
+    description: "This is an Endpoint authorization to Amazon Echo via Hue Emulator",
+    category: "My Apps",
+    iconUrl: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience.png",
+    iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
+    iconX3Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
+    oauth: true
+) /* definition */
+
 
 preferences {
-    section("Allow Endpoint to Control These Things...") {
-        input "switches", "capability.switch", title: "Which Switches?", multiple: true
-        //input "locks", "capability.lock", title: "Which Locks?", multiple: true
+    page( name: "pageSwitches" )
+    page( name: "pagePhrases" )
+}
+
+def pageSwitches() {
+    myTrace("Version: ${myVersion()}. Running preferences pages.")
+    def pageProperties = [
+        name: "pageSwitches",
+        title: "Select Switches & Dimmers",
+        nextPage: "pagePhrases",
+        install: true,
+        uninstall: true
+    ]
+    return dynamicPage(pageProperties) {
+        section(title: "About This App") {
+            paragraph "Version ${myVersion()}"
+            href title: "GitHub Link",
+                 style: "external",
+                 url: "https://github.com/CosmicPuppy/SmartThings-ButtonsAsPIN",
+                 description: "https://github.com/CosmicPuppy/SmartThings-ButtonsAsPIN"
+                 required: false
+        }
+        section("Allow Endpoint to Control These Things...") {
+            input "switches", "capability.switch", title: "Which Switches?", multiple: true
+        }
     }
 }
+
+def pagePhrases() {
+    def pageProperties = [
+        name: "pagePhrases",
+        title: "Select Hello Home Phrases",
+        install: true,
+        uninstall: true
+    ]
+
+    return dynamicPage(pageProperties) {
+        section("Phrases / Actions, Modes") {
+            def phrases = location.helloHome?.getPhrases()*.label
+            myDebug("Possible phrase list found: ${phrases}")
+            if (phrases) {
+                myDebug("Phrase list found: ${phrases}")
+                /* NB: Customary to not allow multiple phrases. Complications due to sequencing, etc. */
+                input "phrase", "enum", title: "Trigger Hello Home Action", required: false, options: phrases
+            }
+            input "mode", "mode", title: "Possible modes", required: false
+        }
+    }
+} /* pageSelectPhrases() */
+
 
 mappings {
 
@@ -156,3 +223,8 @@ private show(devices, type) {
 private device(it, type) {
     it ? [id: it.id, label: it.label, type: type] : null
 }
+
+
+/* =========== */
+/* End of File */
+/* =========== */
