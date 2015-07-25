@@ -1,4 +1,4 @@
-private def myVersion() { return "v1.0.1-develop+002-unstable" }
+private def myVersion() { return "v1.0.1-develop+004-unstable" }
 // Version Numbering: vMajor.Minor.VisibleFix[-branch]+BuildNo[-State]. For master, branch=beta or null.
 // In non-release branches, version number is pre-incremented (i.e., branch version always > base released version).
 /**
@@ -55,7 +55,6 @@ definition(
 
 preferences {
     page( name: "pageSwitches" )
-    page( name: "pagePhrases" )
 }
 
 def pageSwitches() {
@@ -79,30 +78,16 @@ def pageSwitches() {
         section("Allow Endpoint to Control These Things...") {
             input "switches", "capability.switch", title: "Which Switches?", multiple: true
         }
-    }
-}
-
-def pagePhrases() {
-    def pageProperties = [
-        name: "pagePhrases",
-        title: "Select Hello Home Phrases",
-        install: true,
-        uninstall: true
-    ]
-
-    return dynamicPage(pageProperties) {
-        section("Phrases / Actions, Modes") {
+        section("Phrases (HH Actions)") {
             def phrases = location.helloHome?.getPhrases()*.label
             myDebug("Possible phrase list found: ${phrases}")
             if (phrases) {
                 myDebug("Phrase list found: ${phrases}")
-                /* NB: Customary to not allow multiple phrases. Complications due to sequencing, etc. */
-                input "phrase", "enum", title: "Trigger Hello Home Action", required: false, options: phrases
+                input "phrases", "enum", title: "Trigger Hello Home Action", required: false, multiple: true, options: phrases
             }
-            input "mode", "mode", title: "Possible modes", required: false
         }
     }
-} /* pageSelectPhrases() */
+}
 
 
 mappings {
@@ -122,69 +107,78 @@ mappings {
                 GET: "updateSwitch"
         ]
     }
-    path("/locks") {
-        action: [
-                GET: "listLocks"
-        ]
-    }
-    path("/locks/:id") {
-        action: [
-                GET: "showLock"
-        ]
-    }
-    path("/locks/:id/:command") {
-        action: [
-                GET: "updateLock"
-        ]
-    }
 
+} /* mappings */
+
+def installed() {
+    listSwitches()
 }
 
-def installed() {}
+def updated() {
+    listSwitches()
+}
 
-def updated() {}
 
-
-//switches
+/**
+ * Switches
+ */
 def listSwitches() {
-    log.debug "Listing Switches"
-    log.debug switches.collect{device(it,"switch")}
-    switches.collect{device(it,"switch")}
+    def list = []
+    myDebug("listSwitches")
+    list = list + switches.collect{device(it,"switch")}
+    myDebug("List so far: ${list}")
+    list = list + phrases.collect{device(it,"phrase")}
+
+    myInfo("Combined: " + list )
+    list
 }
 
+/**
+ * TODO: Does Echo call Show? Why?
+ * For now, this will fail on Phrases.
+ */
 def showSwitch() {
+    myDebug("showSwitch")
     show(switches, "switch")
-    log.debug "Show Switch"
 }
+
 void updateSwitch() {
-    update(switches)
-    log.debug "update Switch"
-}
+    myTrace("updateSwitch Endpoint: request: params: ${params}")
+    def String id = params.id
+    def String type = id.substring( 0, 7 )
+    myTrace("ID: ${id}, TYPE: ${type}.")
+    switch ( type ) {
+    	case "Phrase_":
+            def String calledPhrase = id.substring( 7 )
+            myInfo("Found a Phrase! ${calledPhrase}")
+        	executePhrase(calledPhrase)
+            break
 
-//locks
-def listLocks() {
-    locks.collect{device(it,"lock")}
+        default:
+            update(switches)
+    }
 }
-
-def showLock() {
-    show(locks, "lock")
-}
-
-void updateLock() {
-    update(locks)
-}
-
 
 
 def deviceHandler(evt) {}
 
-private void update(devices) {
-    log.debug "update, request: params: ${params}, devices: $devices.id"
+/**
+ * Handle Phrases
+ */
+private void executePhrase(myPhrase) {
+    /* TODO: Check to make sure Phrase is in Settings.phrases first. May have to expand it. */
+	if (myPhrase != null)	{
+        myTrace("helloHome.execute: \"${myPhrase}\"")
+        location.helloHome.execute(myPhrase)
+    }
+}
 
+
+private void update(devices) {
+    myDebug("update, request: params: ${params}, devices: $devices.id")
 
     //def command = request.JSON?.command
     def command = params.command
-    //let's create a toggle option here
     if (command)
     {
         def device = devices.find { it.id == params.id }
@@ -204,10 +198,11 @@ private void update(devices) {
             }
         }
     }
-}
+} /* update(devices) */
+
 
 private show(devices, type) {
-    log.debug "Echo Endpoint Show Called"
+    myDebug("Echo Endpoint Show Called")
     def device = devices.find { it.id == params.id }
     if (!device) {
         httpError(404, "Device not found")
@@ -217,12 +212,20 @@ private show(devices, type) {
         def s = device.currentState(attributeName)
         [id: device.id, label: device.displayName, value: s?.value, unitTime: s?.date?.time, type: type]
     }
-}
+} /* show() */
 
 
 private device(it, type) {
-    it ? [id: it.id, label: it.label, type: type] : null
-}
+    myDebug("Device() ${it}")
+    switch ( type ) {
+    	case "switch":
+            it ? [id: it.id, label: it.label, type: type] : null
+            break
+        case "phrase":
+            it ? [id: "Phrase_" + it, label: "Phrase " + it, type: type] : null
+            break
+     }
+} /* device() */
 
 
 /* =========== */
