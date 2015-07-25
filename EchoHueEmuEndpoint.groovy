@@ -1,4 +1,4 @@
-private def myVersion() { return "v1.0.1-develop+004-unstable" }
+private def myVersion() { return "v1.0.2-develop+001-unstable" }
 // Version Numbering: vMajor.Minor.VisibleFix[-branch]+BuildNo[-State]. For master, branch=beta or null.
 // In non-release branches, version number is pre-incremented (i.e., branch version always > base released version).
 /**
@@ -54,39 +54,9 @@ definition(
 
 
 preferences {
-    page( name: "pageSwitches" )
-}
-
-def pageSwitches() {
-    myTrace("Version: ${myVersion()}. Running preferences pages.")
-    def pageProperties = [
-        name: "pageSwitches",
-        title: "Select Switches & Dimmers",
-        nextPage: "pagePhrases",
-        install: true,
-        uninstall: true
-    ]
-    return dynamicPage(pageProperties) {
-        section(title: "About This App") {
-            paragraph "Version ${myVersion()}"
-            href title: "GitHub Link",
-                 style: "external",
-                 url: "https://github.com/CosmicPuppy/SmartThings-ButtonsAsPIN",
-                 description: "https://github.com/CosmicPuppy/SmartThings-ButtonsAsPIN"
-                 required: false
-        }
         section("Allow Endpoint to Control These Things...") {
             input "switches", "capability.switch", title: "Which Switches?", multiple: true
         }
-        section("Phrases (HH Actions)") {
-            def phrases = location.helloHome?.getPhrases()*.label
-            myDebug("Possible phrase list found: ${phrases}")
-            if (phrases) {
-                myDebug("Phrase list found: ${phrases}")
-                input "phrases", "enum", title: "Trigger Hello Home Action", required: false, multiple: true, options: phrases
-            }
-        }
-    }
 }
 
 
@@ -110,24 +80,23 @@ mappings {
 
 } /* mappings */
 
-def installed() {
-    listSwitches()
-}
+def installed() {}
 
-def updated() {
-    listSwitches()
-}
+def updated() {}
 
 
 /**
  * Switches
  */
 def listSwitches() {
+    state.phrases = location.helloHome?.getPhrases()*.label
     def list = []
     myDebug("listSwitches")
     list = list + switches.collect{device(it,"switch")}
     myDebug("List so far: ${list}")
-    list = list + phrases.collect{device(it,"phrase")}
+    list = list + location.modes.collect{device(it,"mode")}
+    myDebug("List so far: ${list}")
+    list = list + state.phrases.collect{device(it,"phrase")}
 
     myInfo("Combined: " + list )
     list
@@ -142,14 +111,24 @@ def showSwitch() {
     show(switches, "switch")
 }
 
+/**
+ * TODO: Phrase manipulation should be a subroutine that looks up original label from a state Map.
+ */
 void updateSwitch() {
     myTrace("updateSwitch Endpoint: request: params: ${params}")
     def String id = params.id
+
     def String type = id.substring( 0, 7 )
     myTrace("ID: ${id}, TYPE: ${type}.")
     switch ( type ) {
+    	case "Mode___":
+            def String calledMode = (id.substring( 7 )).replaceAll("-"," ")
+            myInfo("Found a Mode! ${calledMode}")
+        	executeMode(calledMode)
+            break
+
     	case "Phrase_":
-            def String calledPhrase = id.substring( 7 )
+            def String calledPhrase = (id.substring( 7 )).replaceAll("-"," ")
             myInfo("Found a Phrase! ${calledPhrase}")
         	executePhrase(calledPhrase)
             break
@@ -162,6 +141,7 @@ void updateSwitch() {
 
 def deviceHandler(evt) {}
 
+
 /**
  * Handle Phrases
  */
@@ -170,6 +150,18 @@ private void executePhrase(myPhrase) {
 	if (myPhrase != null)	{
         myTrace("helloHome.execute: \"${myPhrase}\"")
         location.helloHome.execute(myPhrase)
+    }
+}
+
+
+/**
+ * Handle Modes
+ */
+private void executeMode(myMode) {
+    /* TODO: Check to make sure Mode is in valid and not already active first. May have to expand it. */
+	if (myMode != null)	{
+        myTrace("setLocationMode: \"${myMode}\"")
+        setLocationMode(myMode)
     }
 }
 
@@ -215,14 +207,21 @@ private show(devices, type) {
 } /* show() */
 
 
+/**
+ * TODO: Phrase manipulation should be a subroutine that sets up original label from a state Map.
+ */
 private device(it, type) {
-    myDebug("Device() ${it}")
+    myDebug("Device( Type: ${type} Value: ${it} )")
     switch ( type ) {
     	case "switch":
             it ? [id: it.id, label: it.label, type: type] : null
             break
+        case "mode":
+            def String modeName = it
+            it ? [id: "Mode___" + modeName.replaceAll(" ","-"), label: "Mode " + modeName, type: type] : null
+            break
         case "phrase":
-            it ? [id: "Phrase_" + it, label: "Phrase " + it, type: type] : null
+            it ? [id: "Phrase_" + it.replaceAll(" ","-"), label: "Activity " + it, type: type] : null
             break
      }
 } /* device() */
