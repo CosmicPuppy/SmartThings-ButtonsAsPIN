@@ -1,95 +1,249 @@
-metadata {
-	definition (name: "Screen Shield on/off", namespace: "CosmicPuppy", author: "Terry Gauchat") {
-		capability "Actuator"
-		capability "Switch"
-		capability "Sensor"
-
-        command "enable"
-        command "disable"
-        attribute "override", "enum", ["stopping", "stopped", "enabled", "disabled"]
-	}
-
-	// Simulator metadata
-	simulator {
-		status "on":  "catchall: 0104 0000 01 01 0040 00 0A21 00 00 0000 0A 00 0A6F6E"
-		status "off": "catchall: 0104 0000 01 01 0040 00 0A21 00 00 0000 0A 00 0A6F6666"
-        status "stop": "catchall: 0104 0000 01 01 0040 00 0A21 00 00 0000 0A 00 0A73746F70"
-
-		reply "raw 0x0 { 00 00 0a 0a 6f 6e }": "catchall: 0104 0000 01 01 0040 00 0A21 00 00 0000 0A 00 0A6F6E"
-		reply "raw 0x0 { 00 00 0a 0a 6f 66 66 }": "catchall: 0104 0000 01 01 0040 00 0A21 00 00 0000 0A 00 0A6F6666"
-        reply "raw 0x0 { 00 00 0a 0a 73 74 6f 70 }": "catchall: 0104 0000 01 01 0040 00 0A21 00 00 0000 0A 00 0A73746F70"
-	}
-
-	tiles {
-		standardTile("switchTile", "device.switch", width: 2, height: 2, canChangeIcon: true, canChangeBackground: false) {
-			state("on",  label:'down (${name})', action:"switch.off", icon:"st.doors.garage.garage-closed", backgroundColor: "#79b821", nextState:"raising")
-			state("off", label:'up (${name})', action:"switch.on",  icon:"st.doors.garage.garage-open",   backgroundColor: "#0000ff", nextState:"lowering")
-            state("lowering", label:'${name}', icon:"st.doors.garage.garage-closing", backgroundColor:"#7fff00", nextState:"on")
-			state("raising",  label:'${name}', icon:"st.doors.garage.garage-opening", backgroundColor:"#37fdfc", nextState:"off")
-            state("stopped",  label:'${name}', icon:"st.doors.garage.garage-opening", backgroundColor:"#888888")
-            state("enabled",  label:'${name}', icon:"st.doors.garage.garage-closed",  backgroundColor:"#555555")
-        }
-
-        /* TODO: Perhaps make this tile stop AND disable the on/off/up/down buttons? */
-		standardTile("stopTile", "device.override", width: 1, height: 1, canChangeIcon: false, canChangeBackground: true, decoration: flat) {
-            state("enabled",  label:'STOP',   action:"disable", icon:"st.sonos.stop-btn", backgroundColor: "#cccccc", nextState:"stopping", defaultState:true)
-			state("disabled", label:'ENABLE', action:"enable",  icon:"st.sonos.play-btn", backgroundColor: "#bbbbbb")
-            state("stopping",  label:'stopping', icon:"st.sonos.pause-btn", backgroundColor: "#cccccc")
-        }
-
-        main (["switchTile"])
-		details (["switchTile","stopTile"])
-	}
-}
-
-// Parse incoming device messages to generate events
-def parse(String description) {
-    def evt_onoff = []
-	def value = zigbee.parse(description)?.text
-	def name = value in ["on","off"] ? "switch" : null
-
-//    log.trace "Parse returned ${evt_onoff?.descriptionText}, name: ${name} value: ${value}."
-//	  log.debug "Parse argument description: ${description}"
-
-    if ( name != null ) {
-        evt_onoff = createEvent(name: name, value: value)
-//        log.trace "Parse returned ${evt_onoff?.descriptionText}, name: ${name} value: ${value}."
-
-        switch (value) {
-			case "disable":
-            	evt_onoff = createEvent(name: "switch", value: "stopped", displayed: true, isStateChange: true)
-                break;
-		}
-    }
-
-	return [ evt_onoff ]
-}
-
-// Commands sent to the device
-/**
- * TODO: The sendEvent maybe should happen after the shield responds or something.
- *       Currently it looks like the system is allowing a new command to be send before the first is processed.
- *       That situation may be desirable, but then interrupts are needed in the Arduino sketch. For "stop" this would be good.
+/*****************************************************************************
+ * @file
+ * @brief
+ *   Arduino SmartThings Shield LED Example
+ * 2015/5/13 - A few modifications by CosmicPuppy to send responses for every command (on, off, and Hello - h0, h1).
  */
-def on() {
-	zigbee.smartShield(text: "on").format()
+#include <SoftwareSerial.h>   //TODO need to set due to some weird wire language linker, should we absorb this whole library into smartthings
+#include <SmartThings.h>
+
+#define PIN_THING_RX    3
+#define PIN_THING_TX    2
+
+SmartThingsCallout_t messageCallout;    // call out function forward decalaration
+SmartThings smartthing(PIN_THING_RX, PIN_THING_TX, messageCallout, "", false);  // constructor
+
+
+int ledPin = 13;
+bool isDebugEnabled = true;    // enable or disable debug in this example
+
+int downRelayPin = 12;
+int upRelayPin = 11;
+int holdDuration = 300; // duration of the relay on "press"
+int waitDuration = 100; // duration of the relay between "presses".
+
+int inputPin = 7; // 12vDC mono trigger signal input from Projector
+bool projectorOn = false;
+bool projectorUpdate = false; /* Let status of Projector be unsent until we see it change? */
+int inputPinSum = 0; // We will sum the value of input pin over several samples to make sure it is really ON or really OFF.
+int loopCount = 0;
+
+/* TODO: These could be made on/off configuration options from the SmartThings Device Tiles! */
+/*       or change them to #define */
+bool screenAutoOn = true;   // Localized automatic screen down/on when Projector ON  if true.
+bool screenAutoOff = false; // Localized automatic screen up/off  when Projector OFF if true.
+
+
+/**
+ * setup
+ */
+void setup()
+{
+  /* Input trigger from Projector */
+  analogReference(DEFAULT);
+  pinMode(inputPin, INPUT);
+  digitalWrite(inputPin, LOW); // Must be LOW else always get 1. Is this Pulldown enabled?
+
+  /* Set mode for Hardware Pins */
+  pinMode(ledPin, OUTPUT);
+  digitalWrite(ledPin, HIGH);
+
+  pinMode(downRelayPin, OUTPUT);
+  digitalWrite(downRelayPin, LOW);
+
+  pinMode(upRelayPin, OUTPUT);
+  digitalWrite(upRelayPin, LOW);
+
+  if (isDebugEnabled)
+  { // setup debug serial port
+    Serial.begin(9600);         // setup serial with a baud rate of 9600
+    Serial.println("setup..");  // print out 'setup..' on start
+  }
+} /* setup() */
+
+
+/**
+ * loop
+ */
+void loop()
+{
+
+  /* We will allow a few "missed" signal values 5 out of 50 and still count as ON. */
+  inputPinSum += digitalRead(inputPin);
+  if ( loopCount <= 50 && inputPinSum > 45 ) {
+    if ( !projectorOn ) {
+      projectorOn = true;
+      projectorUpdate = true; /* Let status of Projector be unsent until we see it change? */
+      messageCallout( "" );
+      if ( screenAutoOn ) on();
+    }
+    loopCount = 0;
+    inputPinSum = 0;
+  } else if ( loopCount >= 50 && inputPinSum < 5 ) {
+    if ( projectorOn ) {
+      projectorOn = false;
+      projectorUpdate = true; /* Let status of Projector be unsent until we see it change? */
+      messageCallout( "" );
+      if ( screenAutoOff ) off();
+    }
+    loopCount = 0;
+    inputPinSum = 0;
+  }
+  if ( loopCount > 50 ) { loopCount = 0; inputPinSum = 0; }
+  loopCount ++;
+
+/*
+  Serial.print("loopCount: ");
+  Serial.print(loopCount);
+  Serial.print(" inputPinSum: ");
+  Serial.print(inputPinSum);
+  Serial.print(" ProjectorOn Value: ");
+  Serial.print(projectorOn);
+  Serial.println(".");
+*/
+
+  smartthing.run();
+
+} /* loop() */
+
+
+/**
+ * doublePress
+ */
+void doublePress( int whichPin )
+{
+  singlePress( whichPin );
+  singlePress( whichPin );
 }
 
-def off() {
-    zigbee.smartShield(text: "off").format()
+
+/**
+ * singlePress
+ */
+void singlePress( int whichPin )
+{
+  digitalWrite(whichPin, HIGH);
+  delay(holdDuration);
+  digitalWrite(whichPin, LOW);
+  delay(waitDuration);
 }
 
-def disable() {
- 	sendEvent(name: "override", value: "disabled", displayed: true, isStateChange: true)
-    zigbee.smartShield(text: "disable").format()
+
+/**
+ * on() - Screen Down
+ */
+void on()
+{
+  smartthing.shieldSetLED(0, 1, 0); // green
+
+  digitalWrite( upRelayPin, LOW);  // Be certain to lift the other button.
+  doublePress( downRelayPin );
+
+  smartthing.send("on");        // send message to cloud
+  Serial.println("Sent: on");
+  // Serial.println( smartthing.shieldGetLastNetworkState() );
 }
 
-def enable() {
- 	sendEvent(name: "override", value: "enabled", displayed: true, isStateChange: true)
-    /* TODO: We should save the last state (down or up) so we can enable the correct direction. But for now, make it always assume screen was up. */
-    sendEvent(name: "switch", value: "off", displayed: true, isStateChange: true)
-    zigbee.smartShield(text: "enable").format()
+
+/**
+ * off() - Screen Up
+ */
+void off()
+{
+  smartthing.shieldSetLED(0, 0, 1); // blue
+
+  digitalWrite( downRelayPin, LOW);  // Be certain to lift the other button.
+  doublePress( upRelayPin );
+
+  smartthing.send("off");       // send message to cloud
+  Serial.println("Sent: off");
+  // Serial.println( smartthing.shieldGetLastNetworkState() );
 }
+
+
+/**
+ * disable() - Stop Screen (TODO: could also disable SmartThings control).
+ */
+void disable()
+{
+  smartthing.shieldSetLED(1, 0, 0); // red
+
+  digitalWrite( upRelayPin, LOW);  // Be certain to lift the other button.
+  singlePress( downRelayPin );
+  singlePress( upRelayPin );
+
+  smartthing.send("disable");       // send message to cloud
+  Serial.println("Sent: disable");
+  // Serial.println( smartthing.shieldGetLastNetworkState() );
+}
+
+
+/**
+ * enable() - Enable SmartThings (TODO: Just resets from disable for now.).
+ */
+void enable()
+{
+  smartthing.shieldSetLED(1, 2, 1); //
+
+  digitalWrite( upRelayPin, LOW);  // Be certain to lift the other button.
+  singlePress( downRelayPin );
+  singlePress( upRelayPin );
+
+  smartthing.send("enable");       // send message to cloud
+  Serial.println("Sent: enable");
+  // Serial.println( smartthing.shieldGetLastNetworkState() );
+}
+
+
+/**
+ * messageCallout
+ * TODO: Move projectorUpdate outside this function as well as callers in loop().
+ */
+void messageCallout(String message)
+{
+  // if debug is enabled print out the received message
+  if (isDebugEnabled)
+  {
+    Serial.print("Received message: '");
+    Serial.print(message);
+    Serial.println("' ");
+  }
+
+  if (message.equals("on"))
+  {
+    on();
+  }
+
+  if (message.equals("off"))
+  {
+    off();
+  }
+
+  if (message.equals("disable"))
+  {
+    disable();
+  }
+
+  if (message.equals("enable"))
+  {
+    enable();
+  }
+
+  /* TODO: This should be own function, not here in messageCallout(). */
+  /*       But ... if we add remote projON / projOFF (RS232), then we move things around anyway. */
+  if (projectorUpdate)
+  {
+    projectorUpdate = false;
+    if (projectorOn) {
+      Serial.println( "Sending: projON" );
+      smartthing.send("projON");
+    } else {
+      Serial.println( "Sending: projOFF" );
+      smartthing.send("projOFF");
+    }
+  }
+
+} /* messageCallout() */
 
 
 /* =========== */
