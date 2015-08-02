@@ -8,6 +8,12 @@ metadata {
         command "disable"
         attribute "override", "enum", ["stopping", "stopped", "enabled", "disabled"]
 
+        command "screenOn"
+        command "screenOff"
+        attribute "screen", "enum", ["on", "off"]
+
+        command "projecOn"
+        command "projecOff"
         attribute "projectorSignal", "enum", ["on", "off"]
 	}
 
@@ -29,11 +35,11 @@ metadata {
 	}
 
 	tiles {
-		standardTile("switchTile", "device.switch", width: 2, height: 2, canChangeIcon: true, canChangeBackground: false) {
-			state("on",  label:'down (${name})', action:"switch.off", icon:"st.doors.garage.garage-closed", backgroundColor:"#79b821", nextState:"raising")
-			state("off", label:'up (${name})', action:"switch.on",  icon:"st.doors.garage.garage-open",   backgroundColor:"#0000ff", nextState:"lowering")
-            state("lowering", label:'${name}', icon:"st.doors.garage.garage-closing", backgroundColor:"#7fff00", nextState:"on")
-			state("raising",  label:'${name}', icon:"st.doors.garage.garage-opening", backgroundColor:"#37fdfc", nextState:"off")
+		standardTile("screenTile", "device.screen", width: 2, height: 2, canChangeIcon: true, canChangeBackground: false) {
+			state("on",  label:'down (${name})', action:"screenOff", icon:"st.doors.garage.garage-closed", backgroundColor:"#79b821", nextState:"raising")
+			state("off", label:'up (${name})', action:"screenOn",  icon:"st.doors.garage.garage-open",   backgroundColor:"#0000ff", nextState:"lowering")
+            state("lowering", label:'${name}', action: "screenOff", icon:"st.doors.garage.garage-closing", backgroundColor:"#7fff00")
+			state("raising",  label:'${name}', action: "screenOn" , icon:"st.doors.garage.garage-opening", backgroundColor:"#37fdfc")
             state("stopped",  label:'${name}', icon:"st.doors.garage.garage-opening", backgroundColor:"#888888")
             state("enabled",  label:'${name}', icon:"st.doors.garage.garage-closed",  backgroundColor:"#555555")
         }
@@ -45,13 +51,23 @@ metadata {
             state("stopping",  label:'stopping', icon:"st.sonos.pause-btn", backgroundColor: "#cccccc")
         }
 
+		standardTile("switchTile", "device.switch", width: 2, height: 2, canChangeIcon: true, canChangeBackground: false) {
+			state("on",  label:'${name}', action:"switch.off", icon:"st.Entertainment.entertainment9", backgroundColor:"#79b821", nextState:"powering off")
+			state("off", label:'${name}', action:"switch.on",  icon:"st.Entertainment.entertainment9",   backgroundColor:"#0000ff", nextState:"powering on")
+            state("powering on", label:'${name}', action:"switch.off", icon:"st.Entertainment.entertainment9", backgroundColor:"#7fff00")
+			state("powering off",label:'${name}', action:"switch.on", icon:"st.Entertainment.entertainment9", backgroundColor:"#37fdfc")
+        }
+
+		valueTile("blankValueTile", "device.projectorSignal", width: 1, height: 1, canChangeBackground: true, decoration: flat) {
+		}
+
 		standardTile("projectorStatus", "device.projectorSignal", width: 1, height: 1, canChangeBackground: true) {
-    		state "on",  label:'Projector is:${currentValue}', icon:"st.Entertainment.entertainment9", backgroundColor:"#79b821"
+    		state "on",  label:'Projector is: ${currentValue}', icon:"st.Entertainment.entertainment9", backgroundColor:"#79b821"
             state "off", label:'Projector is: ${currentValue}', icon:"st.Entertainment.entertainment9", backgroundColor:"#696969"
 		}
 
-        main (["switchTile"])
-		details (["switchTile","stopTile","projectorStatus"])
+        main (["switchTile","screenTile"])
+		details (["switchTile","projectorStatus","blankValueTile","screenTile","stopTile","blankValueTile"])
 	}
 }
 
@@ -59,12 +75,15 @@ metadata {
 def parse(String description) {
     def evt_onoff = []
 	def value = zigbee.parse(description)?.text
-	def name = value in ["on","off"] ? "switch" : value in ["projON","projOFF"] ? "projectorSignal" : null
-    value = value in [ "projON" ] ? "on" : value
-    value = value in [ "projOFF" ] ? "off" : value
+	def name = value in ["screenOn","screenOff"] ? "screen" : value in ["projecOn","projecOff"] ? "projectorSignal" : null
+    value = value in [ "screenOn" ] ? "on" : value
+    value = value in [ "screenOff" ] ? "off" : value
+	value = value in [ "projecOn" ] ? "on" : value
+    value = value in [ "projecOff" ] ? "off" : value
+
+    if ( name != null ) log.debug "Parse argument description: ${description}"
 
     log.trace "Parse returned ${evt_onoff?.descriptionText}, name: ${name} value: ${value}."
-    log.debug "Parse argument description: ${description}"
 
     if ( name != null ) {
         log.debug "Create Event Name: ${name}, Value: ${value}."
@@ -72,7 +91,7 @@ def parse(String description) {
 
         switch (value) {
 			case "disable":
-            	evt_onoff = createEvent(name: "switch", value: "stopped", displayed: true, isStateChange: true)
+            	evt_onoff = createEvent(name: "screen", value: "stopped", displayed: true, isStateChange: true)
                 break;
 		}
     }
@@ -80,19 +99,37 @@ def parse(String description) {
 	return [ evt_onoff ]
 }
 
-// Commands sent to the device
+
+
 /**
- * TODO: The sendEvent maybe should happen after the shield responds or something.
- *       Currently it looks like the system is allowing a new command to be send before the first is processed.
- *       That situation may be desirable, but then interrupts are needed in the Arduino sketch. For "stop" this would be good.
+ * COMMANDS
  */
 def on() {
-	zigbee.smartShield(text: "on").format()
+	/* TODO: Change this to Projector, probably. */
+	projecOn();
 }
 
 def off() {
-    zigbee.smartShield(text: "off").format()
+	/* TODO: Change this to Projector, probably. */
+	projecOff();
 }
+
+def screenOn() {
+	zigbee.smartShield(text: "screenOn").format()
+}
+
+def screenOff() {
+    zigbee.smartShield(text: "screenOff").format()
+}
+
+def projecOn() {
+	zigbee.smartShield(text: "projecOn").format()
+}
+
+def projecOff() {
+    zigbee.smartShield(text: "projecOff").format()
+}
+
 
 def disable() {
  	sendEvent(name: "override", value: "disabled", displayed: true, isStateChange: true)
