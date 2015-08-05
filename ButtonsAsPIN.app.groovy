@@ -1,18 +1,20 @@
-private def myVersion() { return "v0.1.2-beta+008" }
+private def myVersion() { return "v0.1.4-beta+005-unstable" }
+// Version Numbering: vMajor.Minor.VisibleFix[-branch]+BuildNo[-State]. For master, branch=beta or null.
+// In non-release branches, version number is pre-incremented (i.e., branch version always > base released version).
 /**
  *  Use Buttons As PIN Input
  *
  *  Assign a multi-button controller (e.g., Aeon Labs Minimote) to be a security 'PIN code' input pad,
- *    which triggers a switch, lock, mode, or Hello Home action.
+ *    which triggers a switch, lock, mode, or Routine.
  *  More details on GitHub: <https://github.com/CosmicPuppy/SmartThings-ButtonsAsPIN>
  *    and on SmartThings Community Forum: <http://community.smartthings.com/t/SmartApps/8378?u=tgauchat>
  *
  *  Filename: ButtonsAsPIN.app.groovy
  *  Version: see myVersion(), above.
- *  Date: 2014-12-25
+ *  Date: 2015-12-10
  *  Status:
  *    - Beta release to Community for testing, feedback, feature requests.
- *    - Currently hard limited to 2-9 digits,
+ *    - Currently hard limited to 1-9 digits,
  *          from a choice of 1 to (number of buttons reported by device, max 9, default 4).
  *    - Tested only with 4-button Aeon Labs Minimote, button-push only, no support for button-hold.
  *    - Testing with "ZWN-SC7 Enerwave 7 Button Scene Controller" (by @mattjfrank) in progress.
@@ -30,7 +32,7 @@ private def myVersion() { return "v0.1.2-beta+008" }
  *  (Contributions help cover endless vet bills for Buddy & Deuce, the official CosmicPuppy beagles.)
  *
  *  ----------------------------------------------------------------------------------------------------------------
- *  Copyright 2014 Terry Gauchat
+ *  Copyright 2015 Terry Gauchat
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -53,13 +55,13 @@ import groovy.json.JsonSlurper
  * NB: Someday SmartThings's live log viewer front-end should provide dynamic filter-by-level, right?
  */
 private def myDebug(text) {
-    log.debug myLogFormat(text)
+    log.debug myLogFormat(text) // NB: Debug level messages including the PIN number! Keep debug off mostly.
 }
 private def myTrace(text) {
-    log.trace myLogFormat(text)
+    log.trace myLogFormat(text) // NB: Trace messages are farely minimal. Still helpful even if debug on.
 }
 private def myInfo(text) {
-    log.info myLogFormat(text)
+    log.info myLogFormat(text)  // NB: No usages in this program. TODO: Should some Trace be Info?
 }
 private def myLogFormat(text) {
     return "\"${app.label}\".(\"${app.name}\"): ${text}"
@@ -74,7 +76,7 @@ definition(
     namespace: "CosmicPuppy",
     author: "Terry Gauchat",
     description: "Assign a multi-button controller (e.g., Aeon Labs Minimote) to be a security 'PIN code' input pad, " +
-        "which triggers a switch, lock, mode, or Hello Home action.",
+        "which triggers a switch, lock, mode, or Routine.",
     category: "Safety & Security",
     iconUrl:     "http://cosmicpuppy.com/SmartThingsAssets/ButtonsAsPIN_icon_ComboLock.jpg",
     iconX2Url:   "http://cosmicpuppy.com/SmartThingsAssets/ButtonsAsPIN_icon_ComboLock.jpg",
@@ -106,8 +108,8 @@ def pageSelectButtonDev() {
             input name: "buttonDevice", type: "capability.button", title: "Button Device:", multiple: false, required: true
         }
         section {
-            input name: "pinLength", type: "enum", title: "PIN length (2 to 9 digits):", multiple: false,
-                required: true, options: "2" .. "9", defaultValue: "4";
+            input name: "pinLength", type: "enum", title: "PIN length (1 to 9 digits):", multiple: false,
+                required: true, options: "1" .. "9", defaultValue: "4";
         }
         section(mobileOnly:true, hideable: true, hidden: true) {
             //icon title: "Custom Icon (optional)", required: false
@@ -160,11 +162,12 @@ def pageSetPinSequence() {
     }
     dynamicPage(name: "pageSetPinSequence", title: "Set PIN (Security Code)", nextPage: "pageSelectActions",
         install: false, uninstall: true) {
+		def opts = []
+		for ( i in 1 .. numButtons ) { opts.add("$i") }
         section("PIN Code Buttons in Desired Sequence Order") {
-            L:{ for( i in 1 .. pinLength.toInteger() ) {
-                    input name: "comb_${i}", type: "enum", title: "Sequence $i:", mulitple: false, required: true,
-                        options: 1 .. numButtons;
-                }
+            for( i in 1 .. pinLength.toInteger() ) {
+                    input( name: "comb_${i}", type: "enum", title: "Sequence $i:", multiple: false, required: true,
+						options: opts )
             }
             href "pageSelectButtonDev", title:"Go Back", description:"Tap to go back."
         }
@@ -197,7 +200,7 @@ def pageSelectActions() {
             if (phrases) {
                 myDebug("Phrase list found: ${phrases}")
                 /* NB: Customary to not allow multiple phrases. Complications due to sequencing, etc. */
-                input "phrase", "enum", title: "Trigger Hello Home Action", required: false, options: phrases
+                input "phrase", "enum", title: "Trigger Routine", required: false, options: phrases
             }
             input "mode", "mode", title: "Set Mode", required: false
             input "locks", "capability.lock", title: "Toggle Locks", multiple: true, required: false
